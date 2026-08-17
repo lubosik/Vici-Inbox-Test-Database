@@ -49,7 +49,7 @@ async function sendPushToAll(payload) {
           await supabase.from('push_subscriptions').delete().eq('id', row.id);
           console.log('Push: removed expired subscription (410/404)', row.endpoint.slice(-30));
         } else {
-          console.error('Push send error:', err.statusCode, err.message, err.body?.slice?.(0, 200));
+          console.error('Push send error:', err.statusCode, err.message);
         }
       }
     })

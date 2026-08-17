@@ -31,6 +31,7 @@ jobs:
       ARCHIVE: ${{ github.workspace }}/build/ViciInbox.xcarchive
       EXPORT_DIR: ${{ github.workspace }}/build/export
       KEY_DIR: ${{ github.workspace }}/private_keys
+      VICI_STAGING_SERVER_URL: ${{ vars.VICI_STAGING_SERVER_URL }}
 
     steps:
       - name: Check out
@@ -89,6 +90,10 @@ jobs:
       # App Store distribution signing with the authenticated Team key.
       - name: Archive
         run: |
+          if [[ ! "$VICI_STAGING_SERVER_URL" =~ ^https:// ]]; then
+            echo "::error::Set the VICI_STAGING_SERVER_URL repository variable to the Railway HTTPS domain"
+            exit 1
+          fi
           xcodebuild archive \
             -project "$PROJECT" \
             -scheme "$SCHEME" \
@@ -96,6 +101,7 @@ jobs:
             -destination "generic/platform=iOS" \
             -archivePath "$ARCHIVE" \
             CODE_SIGNING_ALLOWED=NO \
+            VICI_SERVER_URL="$VICI_STAGING_SERVER_URL" \
             CURRENT_PROJECT_VERSION=${{ github.run_number }}
 
       # An unsigned archive has no embedded code-signing entitlement blob.
@@ -108,6 +114,11 @@ jobs:
         run: |
           APP=$(find "$ARCHIVE/Products/Applications" -maxdepth 1 -name "*.app" | head -1)
           if [ -z "$APP" ]; then echo "::error::Archived app not found"; exit 1; fi
+          ARCHIVED_SERVER=$(plutil -extract VICI_SERVER_URL raw "$APP/Info.plist" 2>/dev/null || true)
+          if [ "$ARCHIVED_SERVER" != "$VICI_STAGING_SERVER_URL" ]; then
+            echo "::error::Archived app does not contain the staging Railway URL"
+            exit 1
+          fi
           codesign --force --deep --sign - \
             --entitlements ios/ViciInbox/Resources/ViciInbox.entitlements \
             "$APP"

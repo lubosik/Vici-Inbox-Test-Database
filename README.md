@@ -1,13 +1,16 @@
-# Telynx-Inbox
+# Vici Inbox Staging
 
-Vici's shared SMS/MMS and voice inbox, including the web backend/UI and native
-iOS application. OpenRouter calls are centralized in
-`lib/openrouter-private.js`, which enforces identifier tokenisation, approved
-models/providers, ZDR, and data-collection denial. Call recordings are archived
-to the private `call-recordings` Supabase bucket and played through an
-authenticated short-lived redirect.
+An isolated copy of Vici Inbox for security remediation and upgrade testing.
+It has its own Railway service, Supabase project, native bundle identifier, and
+TestFlight app. It may reuse the existing registered Telnyx business number,
+but the backend refuses every outbound recipient not listed in
+`STAGING_ALLOWED_RECIPIENTS`.
 
-Before deploying these privacy controls, apply
-`scripts/private-recordings-migration.sql`. Keep
-`CALL_RECORDING_RETENTION_ENFORCED=false` until the first destructive retention
-dry run has been reviewed and approved.
+Start with [STAGING-SETUP.md](STAGING-SETUP.md). Create the empty database with
+`scripts/staging-bootstrap.sql`; do not copy production customer data. Phase 2
+rejects unsigned, stale, mismatched, or replayed provider events; restricts
+CORS/CSRF; removes fallback secrets; rate-limits login; and keeps iOS logs
+private. OpenRouter and recording privacy controls from Phase 1 are included.
+
+Production is not connected to this repository and must never use its staging
+database or staging iOS credentials.

@@ -3,6 +3,9 @@ node_modules/
 *.db
 .DS_Store
 
+# Local Supabase CLI project link/cache (can contain infrastructure metadata)
+supabase/.temp/
+
 # Apple signing credentials and provisioning material
 *.p8
 *.p12

@@ -33,7 +33,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		38A007151ABE87CC01A5B6E9 /* Vici Inbox.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Vici Inbox.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		38A007151ABE87CC01A5B6E9 /* Vici Inbox Staging.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Vici Inbox Staging.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		447E27040259063DAA9CB1EF /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		39972EB378BFE723E62921A0 /* FeatureModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeatureModels.swift; sourceTree = "<group>"; };
 		5C8B0868CF14D5068D98ACED /* MessageNotificationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageNotificationManager.swift; sourceTree = "<group>"; };
@@ -83,7 +83,7 @@
 		31793280A19CDC7880B10A8E /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				38A007151ABE87CC01A5B6E9 /* Vici Inbox.app */,
+				38A007151ABE87CC01A5B6E9 /* Vici Inbox Staging.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -178,8 +178,8 @@
 			packageProductDependencies = (
 				30FD16C8FEEF751AEF8AC830 /* telnyx-webrtc-ios */,
 			);
-			productName = "Vici Inbox";
-			productReference = 38A007151ABE87CC01A5B6E9 /* Vici Inbox.app */;
+			productName = "Vici Inbox Staging";
+			productReference = 38A007151ABE87CC01A5B6E9 /* Vici Inbox Staging.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -332,8 +332,9 @@
 									"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.vicipeptides.inbox;
-				PRODUCT_NAME = "Vici Inbox";
+				PRODUCT_BUNDLE_IDENTIFIER = com.vicipeptides.inbox.staging;
+				PRODUCT_NAME = "Vici Inbox Staging";
+				VICI_SERVER_URL = "https://replace-after-railway.invalid";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				TARGETED_DEVICE_FAMILY = 1;
 			};
@@ -356,8 +357,9 @@
 									"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.vicipeptides.inbox;
-				PRODUCT_NAME = "Vici Inbox";
+				PRODUCT_BUNDLE_IDENTIFIER = com.vicipeptides.inbox.staging;
+				PRODUCT_NAME = "Vici Inbox Staging";
+				VICI_SERVER_URL = "https://replace-after-railway.invalid";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				TARGETED_DEVICE_FAMILY = 1;
 			};

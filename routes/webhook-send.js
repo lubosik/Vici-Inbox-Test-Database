@@ -2,21 +2,14 @@
  * POST /webhook/send
  * Called by GHL custom webhook action to send an outbound SMS.
  * Mirrors the old bridge's /send endpoint format exactly.
- * Auth: x-webhook-secret header OR body.webhookSecret OR ?secret= query param.
+ * Auth: Authorization: Bearer <GHL_BRIDGE_SECRET> plus Idempotency-Key.
+ * Secrets in query strings or request bodies are intentionally rejected.
  */
 
 const { supabase } = require('../db');
 const { sendSMS } = require('../telnyx');
 const { normaliseTelnyxStatus } = require('../lib/message-status');
-
-function isAuthorized(req) {
-  if (!process.env.WEBHOOK_SECRET) return true;
-  const provided =
-    req.get('x-webhook-secret') ||
-    req.body?.webhookSecret ||
-    req.query?.secret;
-  return provided === process.env.WEBHOOK_SECRET;
-}
+const { authenticateGHLBridge, rejectWebhook } = require('../lib/webhook-boundary');
 
 function extractPayload(body = {}) {
   const c = body.customData || body.custom_data || body.data?.customData || {};
@@ -39,11 +32,15 @@ module.exports = (broadcastSSE) => {
   const router = require('express').Router();
 
   router.post('/send', async (req, res) => {
-    if (!isAuthorized(req)) {
-      return res.status(401).json({ success: false, error: 'Unauthorized' });
+    let verified;
+    try {
+      verified = await authenticateGHLBridge(req);
+    } catch (error) {
+      return rejectWebhook(res, error, 'GHL bridge');
     }
+    if (verified.duplicate) return res.json({ success: true, duplicate: true });
 
-    const { to, message, contactId, name } = extractPayload(req.body);
+    const { to, message, contactId, name } = extractPayload(verified.body);
 
     if (!to || !message) {
       console.warn('GHL send webhook missing fields. Body keys:', Object.keys(req.body || {}));
@@ -51,7 +48,7 @@ module.exports = (broadcastSSE) => {
     }
 
     if (!isValidPhone(to)) {
-      return res.status(400).json({ success: false, error: 'Invalid phone number: ' + to });
+      return res.status(400).json({ success: false, error: 'Invalid phone number' });
     }
 
     try {
@@ -80,7 +77,7 @@ module.exports = (broadcastSSE) => {
       // Push to inbox live
       broadcastSSE({ type: 'new_message', phone: to, body: message, direction: 'outbound' });
 
-      console.log(`GHL automation SMS sent to ${to}: ${message.slice(0, 60)}`);
+      console.log(`GHL automation SMS sent to ...${String(to).replace(/\D/g, '').slice(-4)}`);
       return res.json({ success: true, messageId, status: 'accepted' });
 
     } catch (err) {

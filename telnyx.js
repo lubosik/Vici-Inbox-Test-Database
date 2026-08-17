@@ -1,22 +1,34 @@
-const crypto = require('crypto');
+const { assertStagingRecipient, isStaging, stagingWebhookURL } = require('./lib/staging-safety');
 
 // mediaUrls: optional array of publicly-accessible HTTPS URLs — presence makes
 // this an MMS. Telnyx caps media_urls at 10; carrier-safe total size is ~600KB.
-async function sendSMS(to, message, mediaUrls = null) {
+async function sendSMS(to, message, mediaUrls = null, {
+  fetchImpl = global.fetch,
+  env = process.env
+} = {}) {
+  const recipient = assertStagingRecipient(to, env);
   const body = {
-    from: process.env.TELNYX_PHONE_NUMBER,
-    to,
+    from: env.TELNYX_PHONE_NUMBER,
+    to: recipient,
     text: message || '',
-    messaging_profile_id: process.env.TELNYX_MESSAGING_PROFILE_ID
+    messaging_profile_id: env.TELNYX_MESSAGING_PROFILE_ID
   };
   if (Array.isArray(mediaUrls) && mediaUrls.length > 0) {
     body.media_urls = mediaUrls.slice(0, 10);
   }
 
-  const response = await fetch('https://api.telnyx.com/v2/messages', {
+  // A staging message keeps the production number/campaign assignment but
+  // sends lifecycle callbacks to the isolated Railway service. Inbound replies
+  // still require the documented allowlist router at the profile webhook.
+  if (isStaging(env)) {
+    body.webhook_url = stagingWebhookURL(env);
+    body.use_profile_webhooks = false;
+  }
+
+  const response = await fetchImpl('https://api.telnyx.com/v2/messages', {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${process.env.TELNYX_API_KEY}`,
+      'Authorization': `Bearer ${env.TELNYX_API_KEY}`,
       'Content-Type': 'application/json'
     },
     body: JSON.stringify(body)
@@ -26,16 +38,4 @@ async function sendSMS(to, message, mediaUrls = null) {
   return { messageId: data.data.id, status: data.data.to?.[0]?.status };
 }
 
-function verifyWebhookSignature(rawBody, signatureHeader, secret) {
-  try {
-    const expected = crypto
-      .createHmac('sha256', secret)
-      .update(rawBody)
-      .digest('hex');
-    return signatureHeader === expected;
-  } catch {
-    return false;
-  }
-}
-
-module.exports = { sendSMS, verifyWebhookSignature };
+module.exports = { sendSMS };

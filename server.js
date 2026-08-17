@@ -9,9 +9,12 @@ const { verifyConnection }    = require('./db');
 const { checkAndSendDeliverySMS, pollForCarrierScans } = require('./routes/webhook-shipstation');
 const { processScheduledQueue } = require('./flows/utils');
 const { startRecordingRetentionJob } = require('./lib/private-recordings');
+const { integrationEnabled, validateRuntimeConfig } = require('./lib/runtime-config');
+const { originAllowed, requireTrustedMutationOrigin } = require('./lib/request-security');
 require('./push-notify'); // initialises VAPID on startup
 
 const app = express();
+app.disable('x-powered-by');
 
 const sseClients = new Set();
 function broadcastSSE(event) {
@@ -26,39 +29,46 @@ app.use(helmet({ contentSecurityPolicy: false }));
 
 app.use(cors({
   origin: (origin, cb) => {
-    if (!origin) return cb(null, true);
-    const allowed = ['http://localhost:3000', process.env.APP_URL].filter(Boolean);
-    if (allowed.includes(origin) || origin.endsWith('.up.railway.app')) return cb(null, true);
-    cb(null, true);
+    cb(null, originAllowed(origin));
   },
   credentials: true
 }));
 
 app.set('trust proxy', 1);
 
-// Raw body for HMAC signature verification on these webhooks
-app.use('/webhook/telnyx',              express.raw({ type: 'application/json' }));
-app.use('/webhook/woocommerce',         express.raw({ type: 'application/json' }));
-app.use('/webhook/woocommerce-customer', express.raw({ type: 'application/json' }));
-// Voice Call Control webhook — must be raw before the global express.json() runs
-app.use('/webhooks/voice',              express.raw({ type: 'application/json' }));
+function requireEnabledIntegration(name) {
+  return (_req, res, next) => {
+    if (integrationEnabled(name)) return next();
+    return res.status(503).json({ error: 'Integration is disabled' });
+  };
+}
+
+// Signature verification must see the exact bytes received from each provider.
+const rawWebhook = express.raw({ type: 'application/json', limit: '1mb' });
+app.use('/webhook/telnyx',               requireEnabledIntegration('telnyx'), rawWebhook);
+app.use('/webhook/woocommerce',          requireEnabledIntegration('woocommerce'), rawWebhook);
+app.use('/webhook/woocommerce-customer', requireEnabledIntegration('woocommerce'), rawWebhook);
+app.use('/webhook/ghl',                  requireEnabledIntegration('ghl'), rawWebhook);
+app.use('/webhook/send',                 requireEnabledIntegration('ghl-bridge'), rawWebhook);
+app.use('/webhooks/voice',               requireEnabledIntegration('voice'), rawWebhook);
 
 // Parsed JSON for the rest
-app.use('/webhook/ghl',        express.json());
-app.use('/webhook/shipstation', express.json());
+app.use('/webhook/shipstation', requireEnabledIntegration('shipstation'), express.json());
 // Image uploads arrive as base64 JSON — needs a higher limit than the default 100kb
 app.use('/api/upload', express.json({ limit: '8mb' }));
-app.use(express.json());
+app.use(express.json({ limit: '1mb' }));
 
 // Cookie-session: signed client-side cookie — survives Railway restarts/redeploys.
 // Session only stores { authenticated: true } so cookie stays tiny (<100 bytes).
 app.use(cookieSession({
   name:   'vici_sess',
-  secret: process.env.SESSION_SECRET || 'fallback-secret-change-this',
+  secret: process.env.SESSION_SECRET,
   httpOnly: true,
   secure: process.env.NODE_ENV === 'production',
   sameSite: 'strict',
-  maxAge: 30 * 24 * 60 * 60 * 1000  // 30 days
+  // Interim shared-password control. Phase 3 replaces this with individual,
+  // revocable accounts and device/session inventory.
+  maxAge: 7 * 24 * 60 * 60 * 1000
 }));
 
 function requireAuth(req, res, next) {
@@ -71,40 +81,55 @@ const sendLimiter = rateLimit({
   max: 20,
   message: { error: 'Too many messages, slow down' }
 });
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many login attempts. Try again later.' }
+});
 
 // ── Webhooks (no auth) ────────────────────────────────────────────────────
 app.use('/webhook', require('./routes/webhook')(broadcastSSE));
 app.use('/webhook', require('./routes/webhook-ghl')(broadcastSSE));
-app.use('/webhook', express.json(), require('./routes/webhook-send')(broadcastSSE));
+app.use('/webhook', require('./routes/webhook-send')(broadcastSSE));
 app.use('/webhook', require('./routes/webhook-woocommerce')(broadcastSSE));
 app.use('/webhook', require('./routes/webhook-shipstation')(broadcastSSE));
 
 // ── Auth ──────────────────────────────────────────────────────────────────
+app.use('/auth', requireTrustedMutationOrigin);
+app.use('/auth/login', authLimiter);
 app.use('/auth', require('./routes/auth'));
 
 // ── Admin (backfill endpoints, protected by INBOX_PASSWORD) ──────────────
-app.use('/admin', require('./routes/admin')());
+app.use('/admin', requireTrustedMutationOrigin, require('./routes/admin')());
 
 // ── Authenticated API routes ──────────────────────────────────────────────
+app.use('/api', requireTrustedMutationOrigin);
 app.use('/api/sse',           requireAuth, require('./routes/sse')(sseClients));
-app.use('/api/send',          requireAuth, sendLimiter, require('./routes/send')(broadcastSSE));
+app.use('/api/send',          requireAuth, requireEnabledIntegration('telnyx'), sendLimiter, require('./routes/send')(broadcastSSE));
 app.use('/api/upload',        requireAuth, require('./routes/upload'));
-app.use('/api/react',         requireAuth, sendLimiter, require('./routes/react')(broadcastSSE));
+app.use('/api/react',         requireAuth, requireEnabledIntegration('telnyx'), sendLimiter, require('./routes/react')(broadcastSSE));
 app.use('/api/conversations', requireAuth, require('./routes/conversations'));
-app.use('/api/intelligence',  requireAuth, require('./routes/intelligence'));
+app.use('/api/intelligence',  requireAuth, requireEnabledIntegration('openrouter'), require('./routes/intelligence'));
 app.use('/api/sync',          requireAuth, require('./routes/sync'));
 app.use('/api/contacts',      requireAuth, require('./routes/contacts'));
 app.use('/api/catchup',       requireAuth, require('./routes/catchup'));
 app.use('/api/push',          requireAuth, require('./routes/push')());
 app.use('/api/mobile-push',   requireAuth, require('./routes/mobile-push')());
 app.use('/api/activity',      requireAuth, require('./routes/activity'));
-app.use('/api/voice',         requireAuth, require('./routes/voice'));
+app.use('/api/voice',         requireAuth, requireEnabledIntegration('voice'), require('./routes/voice'));
 
 // Voice webhooks (public — Telnyx calls this directly)
 app.use('/webhooks/voice', require('./routes/voice-webhook'));
 
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', uptime: Math.floor(process.uptime()), ts: new Date().toISOString() });
+  res.json({
+    status: 'ok',
+    environment: process.env.APP_ENVIRONMENT,
+    uptime: Math.floor(process.uptime()),
+    ts: new Date().toISOString()
+  });
 });
 
 app.use(express.static(path.join(__dirname, 'public')));
@@ -157,18 +182,28 @@ function startDeliveryCheck() {
   }, SIX_HOURS);
 }
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, async () => {
+async function startServer() {
+  validateRuntimeConfig();
+  const PORT = process.env.PORT || 3000;
+  const server = app.listen(PORT, async () => {
   await verifyConnection();
-  startScheduledQueue();
-  startShipmentPoll();
-  startDeliveryCheck();
+  if (integrationEnabled('automations')) startScheduledQueue();
+  if (integrationEnabled('shipstation')) {
+    startShipmentPoll();
+    startDeliveryCheck();
+  }
   startRecordingRetentionJob();
-  console.log(`Vici SMS Inbox running on port ${PORT}`);
-  console.log(`Telnyx: ${process.env.TELNYX_PHONE_NUMBER}`);
-  console.log(`WooCommerce: ${process.env.WC_CONSUMER_KEY ? 'configured' : 'NOT configured'}`);
-  console.log(`ShipStation: ${process.env.SS_API_KEY ? 'configured' : 'NOT configured'}`);
-  console.log(`Flows: failed/hold/confirmed/shipped/delivered ACTIVE`);
-});
+    console.log(`Vici Inbox ${process.env.APP_ENVIRONMENT} running on port ${PORT}`);
+    console.log(`Integrations: ${process.env.ENABLED_INTEGRATIONS || 'none'}`);
+  });
+  return server;
+}
 
-module.exports = { app, broadcastSSE };
+if (require.main === module) {
+  startServer().catch(error => {
+    console.error('[STARTUP] Refusing unsafe startup:', error.message);
+    process.exit(1);
+  });
+}
+
+module.exports = { app, broadcastSSE, startServer };

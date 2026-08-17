@@ -1,4 +1,3 @@
-const crypto = require('crypto');
 const { supabase } = require('../db');
 const { syncOrder, runWooSync } = require('../sync-woocommerce');
 const { normalizePhone, wooGet } = require('../woocommerce');
@@ -9,6 +8,12 @@ const { handleOrderFailed, handleOrderRecovered } = require('../flows/failed');
 const { handleOrderOnHold }                       = require('../flows/hold');
 const { handleOrderConfirmed, handleOrderShipped } = require('../flows/confirmed');
 const { cancelScheduled, cancelScheduledForCustomer } = require('../flows/utils');
+const { authenticateWooCommerce, rejectWebhook } = require('../lib/webhook-boundary');
+
+function maskedPhone(value) {
+  const digits = String(value || '').replace(/\D/g, '');
+  return digits ? `...${digits.slice(-4)}` : 'unknown';
+}
 
 // Resolve a phone number for an order using multiple fallbacks:
 // 1. WooCommerce billing.phone
@@ -40,7 +45,7 @@ async function resolvePhone(order) {
       .eq('email', email)
       .maybeSingle();
     if (localContact?.phone) {
-      console.log(`resolvePhone: found ${email} in local DB → ${localContact.phone}`);
+      console.log(`resolvePhone: local contact matched → ${maskedPhone(localContact.phone)}`);
       return localContact.phone;
     }
   } catch {}
@@ -50,7 +55,7 @@ async function resolvePhone(order) {
     const ghlContact = await searchContactByEmail(email);
     const ghlPhone = normalizePhone(ghlContact?.phone);
     if (ghlPhone) {
-      console.log(`resolvePhone: found ${email} in GHL → ${ghlPhone}`);
+      console.log(`resolvePhone: GHL contact matched → ${maskedPhone(ghlPhone)}`);
       return ghlPhone;
     }
   } catch {}
@@ -60,30 +65,23 @@ async function resolvePhone(order) {
 
 // Message templates moved to flows/confirmed.js and flows/shipped.js
 
-function verifyWooSignature(rawBody, signature, secret) {
-  try {
-    const expected = crypto.createHmac('sha256', secret).update(rawBody).digest('base64');
-    return signature === expected;
-  } catch { return false; }
-}
-
 module.exports = (broadcastSSE) => {
   const router = require('express').Router();
 
   // customer.created + customer.updated — single endpoint, both topics point here
   router.post('/woocommerce-customer', async (req, res) => {
+    let verified;
+    try {
+      verified = await authenticateWooCommerce(req, { provider: 'woocommerce-customer' });
+    } catch (error) {
+      return rejectWebhook(res, error, 'WooCommerce customer');
+    }
+    if (verified.duplicate) return res.sendStatus(200);
     res.sendStatus(200);
     try {
-      const sig = req.headers['x-wc-webhook-signature'];
-      if (sig && process.env.WC_WEBHOOK_SECRET) {
-        if (!verifyWooSignature(req.body, sig, process.env.WC_WEBHOOK_SECRET)) {
-          console.warn('WooCommerce customer webhook signature mismatch — processing anyway');
-        }
-      }
-
-      const customer = JSON.parse(req.body.toString());
-      const topic = req.headers['x-wc-webhook-topic'] || 'customer.unknown';
-      console.log(`WooCommerce ${topic} — customer #${customer.id} email=${customer.email}`);
+      const customer = verified.body;
+      const topic = verified.topic;
+      console.log(`WooCommerce ${topic} — customer #${customer.id}`);
 
       const phone = normalizePhone(customer.billing?.phone || customer.phone);
       if (!phone) {
@@ -116,7 +114,7 @@ module.exports = (broadcastSSE) => {
         }, { onConflict: 'phone' });
 
         broadcastSSE({ type: 'contact_added', phone, name });
-        console.log(`${topic}: new contact created — ${phone} (${name})`);
+        console.log(`${topic}: new contact created — ${maskedPhone(phone)}`);
         return;
       }
 
@@ -130,7 +128,7 @@ module.exports = (broadcastSSE) => {
       if (wooId   && wooId   !== existing.woo_customer_id) updates.woo_customer_id = wooId;
 
       if (Object.keys(updates).length === 0) {
-        console.log(`${topic}: contact ${phone} already up to date — no changes`);
+        console.log(`${topic}: contact ${maskedPhone(phone)} already up to date — no changes`);
         return;
       }
 
@@ -141,26 +139,25 @@ module.exports = (broadcastSSE) => {
         .eq('phone', existing.phone);
 
       broadcastSSE({ type: 'contact_updated', phone: existing.phone, updates });
-      console.log(`${topic}: updated contact ${existing.phone} — changed fields: ${Object.keys(updates).filter(k => k !== 'last_seen').join(', ')}`);
+      console.log(`${topic}: updated contact ${maskedPhone(existing.phone)} — changed fields: ${Object.keys(updates).filter(k => k !== 'last_seen').join(', ')}`);
     } catch (err) {
       console.error('WooCommerce customer webhook error:', err.message, err.stack);
     }
   });
 
   router.post('/woocommerce', async (req, res) => {
-    // Respond 200 immediately — WooCommerce retries if no quick ack
+    let verified;
+    try {
+      verified = await authenticateWooCommerce(req, { provider: 'woocommerce-order' });
+    } catch (error) {
+      return rejectWebhook(res, error, 'WooCommerce order');
+    }
+    if (verified.duplicate) return res.sendStatus(200);
     res.sendStatus(200);
 
     try {
-      const sig = req.headers['x-wc-webhook-signature'];
-      if (sig && process.env.WC_WEBHOOK_SECRET) {
-        if (!verifyWooSignature(req.body, sig, process.env.WC_WEBHOOK_SECRET)) {
-          console.warn('WooCommerce webhook signature mismatch — processing anyway');
-        }
-      }
-
-      const order  = JSON.parse(req.body.toString());
-      const topic  = req.headers['x-wc-webhook-topic'] || 'unknown';
+      const order  = verified.body;
+      const topic  = verified.topic;
       const status = order.status;
       const orderId = String(order.id);
 
