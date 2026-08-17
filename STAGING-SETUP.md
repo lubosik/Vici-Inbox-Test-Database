@@ -20,8 +20,10 @@ own delivery callback URL and can only target `STAGING_ALLOWED_RECIPIENTS`.
 
 ## Safe setup order
 
-1. Rotate the GitHub token and Supabase service-role key that were shared in
-   chat. Put replacement values only in GitHub/Railway secret stores.
+1. Revoke the GitHub token shared in chat. In Supabase **Settings → API Keys**,
+   create a new revocable `sb_secret_...` key for the Railway backend; do not
+   reuse the legacy `service_role` JWT shared in chat. After confirming nothing
+   uses that legacy key, disable it. Put the replacement only in Railway.
 2. In the new Supabase project's SQL Editor, run
    `scripts/staging-bootstrap.sql`. This creates empty structure only; it does
    not copy production data.
@@ -52,7 +54,7 @@ ENABLED_INTEGRATIONS=telnyx
 CORS_ALLOWED_ORIGINS=https://<staging-service>.up.railway.app
 STAGING_ALLOWED_RECIPIENTS=+<owner-test-number>
 SUPABASE_URL=<new-staging-project-url>
-SUPABASE_SERVICE_KEY=<rotated-staging-service-role-key>
+SUPABASE_SERVICE_KEY=<new-staging-sb-secret-key>
 SESSION_SECRET=<new-random-value-at-least-32-characters>
 INBOX_PASSWORD=<new-staging-only-password-at-least-12-characters>
 TELNYX_API_KEY=<secret>
@@ -61,7 +63,9 @@ TELNYX_MESSAGING_PROFILE_ID=<existing-approved-profile-id>
 TELNYX_PHONE_NUMBER=<existing-business-number>
 ```
 
-Never put the service-role key, API keys, passwords, SIP credentials, APNs key,
+`SUPABASE_SERVICE_KEY` is the existing application variable name and accepts
+the new Supabase `sb_secret_...` format. Never put that secret, API keys,
+passwords, SIP credentials, APNs key,
 or personal test number in Git. The Supabase publishable/anon key is not needed
 by this architecture because clients talk to Railway, not Supabase directly.
 
