@@ -215,7 +215,8 @@ async function syncOrderStatuses() {
       broadcast({ type: 'order_status_updated', phone: db.contact_phone, status: newStatus, order_id: orderId });
     }
 
-    console.log(`[STATUS-SYNC] Order ${orderId}: ${db.status} → ${newStatus} (${db.contact_phone || 'no-phone'})`);
+    const phoneLabel = db.contact_phone ? `...${db.contact_phone.slice(-4)}` : 'no-phone';
+    console.log(`[STATUS-SYNC] Order ${orderId}: ${db.status} → ${newStatus} (${phoneLabel})`);
     changes.push({ order_id: orderId, phone: db.contact_phone, from: db.status, to: newStatus });
     fixed++;
   }

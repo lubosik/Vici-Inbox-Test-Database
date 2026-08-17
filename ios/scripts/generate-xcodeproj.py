@@ -20,8 +20,9 @@ import shutil
 # ── Settings (mirror project.yml) ────────────────────────────────────────────
 PROJECT_NAME    = "ViciInbox"
 TARGET_NAME     = "ViciInbox"
-PRODUCT_NAME    = "Vici Inbox"
-BUNDLE_ID       = "com.vicipeptides.inbox"
+PRODUCT_NAME    = "Vici Inbox Staging"
+BUNDLE_ID       = "com.vicipeptides.inbox.staging"
+SERVER_URL      = "https://replace-after-railway.invalid"
 DEVELOPMENT_TEAM = "PQFYN2CD77"
 DEPLOYMENT_TARGET = "16.0"
 SWIFT_VERSION   = "5.9"
@@ -349,6 +350,7 @@ def main():
         f'MARKETING_VERSION = {MARKETING_VERSION};',
         f'PRODUCT_BUNDLE_IDENTIFIER = {BUNDLE_ID};',
         f'PRODUCT_NAME = "{PRODUCT_NAME}";',
+        f'VICI_SERVER_URL = "{SERVER_URL}";',
         'SWIFT_EMIT_LOC_STRINGS = YES;',
         'TARGETED_DEVICE_FAMILY = 1;',
     ]

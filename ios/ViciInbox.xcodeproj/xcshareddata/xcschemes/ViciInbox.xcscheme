@@ -6,7 +6,7 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "0E8A3AD980EC179856012B7E"
-               BuildableName = "Vici Inbox.app"
+               BuildableName = "Vici Inbox Staging.app"
                BlueprintName = "ViciInbox"
                ReferencedContainer = "container:ViciInbox.xcodeproj">
             </BuildableReference>
@@ -22,7 +22,7 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "0E8A3AD980EC179856012B7E"
-            BuildableName = "Vici Inbox.app"
+            BuildableName = "Vici Inbox Staging.app"
             BlueprintName = "ViciInbox"
             ReferencedContainer = "container:ViciInbox.xcodeproj">
          </BuildableReference>
@@ -33,7 +33,7 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "0E8A3AD980EC179856012B7E"
-            BuildableName = "Vici Inbox.app"
+            BuildableName = "Vici Inbox Staging.app"
             BlueprintName = "ViciInbox"
             ReferencedContainer = "container:ViciInbox.xcodeproj">
          </BuildableReference>

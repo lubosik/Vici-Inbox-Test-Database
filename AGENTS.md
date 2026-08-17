@@ -5,6 +5,21 @@
 This repository contains the Vici Inbox web backend/UI and its native iPhone
 client.
 
+This repository is the isolated **staging** deployment. Its non-negotiable
+invariants are:
+
+- `APP_ENVIRONMENT=staging` and an explicit `STAGING_ALLOWED_RECIPIENTS` list.
+  `telnyx.js` is the last provider boundary and must reject every other number.
+- Never copy production customer rows, messages, orders, recordings, push
+  tokens, sessions, or credentials into staging.
+- The staging iOS bundle is `com.vicipeptides.inbox.staging`, uses a separate
+  Keychain namespace, and must show `Vici Inbox Staging` on the phone.
+- All Telnyx, WooCommerce, and GHL events pass through
+  `lib/webhook-boundary.js`; no route may parse/process first or accept a
+  failed/missing signature. Replay claims live in `webhook_events`.
+- Only promote reviewed commits from staging to production. Never copy a
+  database or environment file between them.
+
 - The web application is a Node.js/Express service deployed on Railway. It uses
   Supabase for application data and integrates with Telnyx, WooCommerce, GHL,
   ShipStation, web push, and OpenRouter.

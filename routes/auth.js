@@ -1,8 +1,9 @@
 const router = require('express').Router();
+const { safeEqual } = require('../lib/webhook-security');
 
 router.post('/login', (req, res) => {
   const { password } = req.body;
-  if (password === process.env.INBOX_PASSWORD) {
+  if (process.env.INBOX_PASSWORD && safeEqual(password, process.env.INBOX_PASSWORD)) {
     req.session.authenticated = true;
     res.json({ success: true });
   } else {

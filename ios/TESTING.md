@@ -1,6 +1,9 @@
 # Real-device test plan
 
 CallKit does not work in the Simulator. Every test below needs a physical iPhone.
+This repository builds **Vici Inbox Staging** with bundle identifier
+`com.vicipeptides.inbox.staging`; do not use the production App ID, database,
+push tokens, or Keychain data while following this plan.
 
 ## Prerequisites
 
@@ -21,7 +24,8 @@ fresh install must be opened once in the foreground.
 3. Settings tab → **Status** should read **"Ready for calls"**
 4. Settings → **Message notifications** should read **Enabled** and
    **Production** for a TestFlight build
-5. In Console.app (Mac, device selected, filter subsystem `com.vicipeptides.inbox`)
+5. In Console.app (Mac, device selected, filter subsystem
+   `com.vicipeptides.inbox.staging`)
    confirm: `received VoIP push token` then `client ready — registered with Telnyx`
 
 If the status never reaches Ready, nothing downstream will work. Check the SIP

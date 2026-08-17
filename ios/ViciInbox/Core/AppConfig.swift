@@ -1,8 +1,6 @@
 import Foundation
 
-/// Static configuration for the app. The server URL points at the same
-/// Railway backend the web inbox uses — the iOS app is a second client
-/// onto the existing system, not a separate stack.
+/// Static configuration for the isolated staging app.
 enum AppConfig {
 
     /// Base URL of the Vici inbox backend (Railway).
@@ -12,10 +10,13 @@ enum AppConfig {
            let url = URL(string: raw) {
             return url
         }
-        // Verified against the live deployment's /health endpoint and the
-        // APP_URL in the backend .env — the Railway app has a generated name,
-        // not a project-named one.
-        return URL(string: "https://web-production-2551e.up.railway.app")!
+        if let raw = Bundle.main.object(forInfoDictionaryKey: "VICI_SERVER_URL") as? String,
+           let url = URL(string: raw),
+           url.scheme == "https",
+           url.host?.hasSuffix(".invalid") == false {
+            return url
+        }
+        fatalError("Set the staging VICI_SERVER_URL after Railway creates its domain.")
     }()
 
     /// Telnyx push environment must match how the binary was signed:
@@ -36,5 +37,5 @@ enum AppConfig {
     static let pushWhenActive = false
 
     /// Shown as the app name in the native iOS call UI (lock screen, Recents).
-    static let callKitDisplayName = "Vici Inbox"
+    static let callKitDisplayName = "Vici Inbox Staging"
 }

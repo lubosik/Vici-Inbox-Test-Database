@@ -6,6 +6,7 @@ const { answerCall, speakOnCall, transferCall, recordCall } = require('../lib/te
 const { finalCallStatus } = require('../lib/call-status');
 const { archiveCallRecording } = require('../lib/private-recordings');
 const { getIOSVoiceCredentials } = require('../lib/voice-credentials');
+const { authenticateTelnyx, rejectWebhook } = require('../lib/webhook-boundary');
 
 // ─── Supabase v2 helpers — query builder is NOT a native Promise, no .catch() ──
 async function dbUpsert(values, options = {}) {
@@ -110,29 +111,29 @@ async function transferToOperator(cid) {
   const isE164 = typeof phone === 'string' && /^\+[1-9]\d{7,14}$/.test(phone);
   const fromNumber = isE164 ? phone : process.env.TELNYX_PHONE_NUMBER;
   if (phone && !isE164) {
-    console.warn(`[VOICE] caller number ${phone} is not E.164 — using business number as from`);
+    console.warn(`[VOICE] caller number ...${String(phone).slice(-4)} is not E.164 — using business number as from`);
   }
 
   await transferCall(cid, sipTarget, fromNumber, callerName);
-  console.log(`[VOICE] Transfer initiated to ${sipTarget} as ${callerName || fromNumber}`);
+  console.log('[VOICE] Transfer initiated to the configured iOS SIP credential');
 }
 
 router.post('/', async (req, res) => {
+  let verified;
+  try {
+    verified = await authenticateTelnyx(req, {
+      provider: 'telnyx-voice',
+      kind: 'voice'
+    });
+  } catch (error) {
+    return rejectWebhook(res, error, 'Telnyx voice');
+  }
+  if (verified.duplicate) return res.sendStatus(200);
   res.sendStatus(200);
-  console.log('[VOICE] Webhook received');
+  console.log('[VOICE] Verified webhook received');
 
   try {
-    const raw = req.body;
-    let body;
-    try {
-      body = Buffer.isBuffer(raw)
-        ? JSON.parse(raw.toString() || '{}')
-        : (typeof raw === 'object' ? raw : JSON.parse(String(raw) || '{}'));
-    } catch (e) {
-      console.error('[VOICE] Parse error:', e.message);
-      return;
-    }
-
+    const body = verified.body;
     const event = body?.data;
     if (!event) return;
 

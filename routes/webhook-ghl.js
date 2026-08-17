@@ -1,4 +1,10 @@
 const { supabase } = require('../db');
+const { authenticateGHL, rejectWebhook } = require('../lib/webhook-boundary');
+
+function maskedPhone(value) {
+  const digits = String(value || '').replace(/\D/g, '');
+  return digits ? `...${digits.slice(-4)}` : 'unknown';
+}
 
 function isValidPhone(phone) {
   if (!phone) return false;
@@ -15,11 +21,17 @@ module.exports = (broadcastSSE) => {
   const router = require('express').Router();
 
   router.post('/ghl', async (req, res) => {
-    // Respond immediately — GHL expects fast 200
+    let verified;
+    try {
+      verified = await authenticateGHL(req);
+    } catch (error) {
+      return rejectWebhook(res, error, 'GHL');
+    }
+    if (verified.duplicate) return res.sendStatus(200);
     res.sendStatus(200);
 
     try {
-      const body = req.body;
+      const body = verified.body;
       const type = body.type;
       const locationId = body.locationId;
 
@@ -41,7 +53,7 @@ module.exports = (broadcastSSE) => {
           last_seen: body.dateAdded || new Date().toISOString()
         }, { onConflict: 'phone' });
 
-        console.log(`GHL webhook: new contact ${phone} (${name})`);
+        console.log(`GHL webhook: new contact ${maskedPhone(phone)}`);
 
         broadcastSSE({ type: 'contact_added', phone, name });
         return;
@@ -112,7 +124,7 @@ module.exports = (broadcastSSE) => {
           created_at: body.dateAdded || body.createdAt || new Date().toISOString()
         }, { onConflict: 'telnyx_message_id' });
 
-        console.log(`GHL webhook: outbound SMS to ${phone}: ${messageBody.slice(0, 50)}`);
+        console.log(`GHL webhook: outbound SMS to ${maskedPhone(phone)}`);
         broadcastSSE({ type: 'new_message', phone, body: messageBody, direction: 'outbound' });
         return;
       }
@@ -157,7 +169,7 @@ module.exports = (broadcastSSE) => {
           created_at: body.dateAdded || body.createdAt || new Date().toISOString()
         }, { onConflict: 'telnyx_message_id' });
 
-        console.log(`GHL webhook: inbound SMS from ${phone}: ${messageBody.slice(0, 50)}`);
+        console.log(`GHL webhook: inbound SMS from ${maskedPhone(phone)}`);
         broadcastSSE({ type: 'new_message', phone, body: messageBody, direction: 'inbound' });
         return;
       }

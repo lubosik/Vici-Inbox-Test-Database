@@ -1,6 +1,5 @@
 const { supabase, insertSmsMessage } = require('../db');
 const ghl = require('../ghl');
-const { verifyWebhookSignature } = require('../telnyx');
 const { analyseConversation } = require('../intelligence');
 const { sendPushToAll } = require('../push-notify');
 const { sendNativeMessagePush } = require('../lib/apns-notify');
@@ -8,6 +7,7 @@ const { cancelScheduledForCustomer, isOptedOut, markOptedOut } = require('../flo
 const { rehostInboundMedia } = require('../lib/mms-media');
 const { parseTapback, findTapbackTarget } = require('../lib/tapbacks');
 const { normaliseTelnyxStatus, updateMessageStatus } = require('../lib/message-status');
+const { authenticateTelnyx, rejectWebhook } = require('../lib/webhook-boundary');
 
 const DELIVERY_EVENTS = new Set(['message.sent', 'message.delivered', 'message.finalized']);
 
@@ -15,18 +15,20 @@ module.exports = (broadcastSSE) => {
   const router = require('express').Router();
 
   router.post('/telnyx', async (req, res) => {
+    let verified;
+    try {
+      verified = await authenticateTelnyx(req, {
+        provider: 'telnyx-messaging',
+        kind: 'messaging'
+      });
+    } catch (error) {
+      return rejectWebhook(res, error, 'Telnyx messaging');
+    }
+    if (verified.duplicate) return res.sendStatus(200);
     res.sendStatus(200);
 
     try {
-      const rawBody = req.body;
-      const body = JSON.parse(rawBody.toString());
-
-      const sig = req.headers['x-telnyx-signature'];
-      if (sig) {
-        const valid = verifyWebhookSignature(rawBody, sig, process.env.WEBHOOK_SECRET);
-        if (!valid) console.warn('Webhook signature mismatch — processing anyway');
-      }
-
+      const body = verified.body;
       const event = body?.data;
       const eventType = event?.event_type;
       const payload = event?.payload;

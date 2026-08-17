@@ -7,7 +7,9 @@ import Security
 /// cold and it must be able to reconnect without a user login.
 enum CredentialStore {
 
-    private static let service = "com.vicipeptides.inbox"
+    // A separate service prevents the staging app from reading the production
+    // inbox password or reusable SIP credentials on the same iPhone.
+    private static let service = "com.vicipeptides.inbox.staging"
 
     enum Key: String {
         case inboxPassword   = "inbox_password"

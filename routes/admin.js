@@ -16,13 +16,13 @@ const { backfillFailedOrders } = require('../flows/failed');
 const { backfillOnHoldOrders } = require('../flows/hold');
 const { backfillRecordings } = require('../scripts/backfill-recordings');
 const { supabase } = require('../db');
+const { verifyBearerSecret } = require('../lib/webhook-security');
 
 function requireAdmin(req, res, next) {
   const auth     = req.headers['authorization'] || '';
   const password = process.env.INBOX_PASSWORD;
-  if (!password) return next(); // no password set — allow (dev mode)
-  const token = auth.replace('Bearer ', '').trim();
-  if (token !== password) {
+  if (!password) return res.status(503).json({ error: 'Admin authentication is not configured' });
+  if (!verifyBearerSecret(auth, password)) {
     return res.status(401).json({ error: 'Unauthorised' });
   }
   next();

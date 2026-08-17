@@ -5,26 +5,26 @@ import os
 /// be read in Console.app when a real device receives a push while the app was
 /// terminated — that is the only practical way to debug the cold-launch path.
 enum Log {
-    private static let voiceLogger = Logger(subsystem: "com.vicipeptides.inbox", category: "voice")
-    private static let pushLogger  = Logger(subsystem: "com.vicipeptides.inbox", category: "push")
-    private static let appLogger   = Logger(subsystem: "com.vicipeptides.inbox", category: "app")
+    private static let voiceLogger = Logger(subsystem: "com.vicipeptides.inbox.staging", category: "voice")
+    private static let pushLogger  = Logger(subsystem: "com.vicipeptides.inbox.staging", category: "push")
+    private static let appLogger   = Logger(subsystem: "com.vicipeptides.inbox.staging", category: "app")
 
     static func voice(_ message: String) {
-        voiceLogger.log("\(message, privacy: .public)")
+        voiceLogger.log("\(message, privacy: .private(mask: .hash))")
         #if DEBUG
         print("[voice] \(message)")
         #endif
     }
 
     static func push(_ message: String) {
-        pushLogger.log("\(message, privacy: .public)")
+        pushLogger.log("\(message, privacy: .private(mask: .hash))")
         #if DEBUG
         print("[push] \(message)")
         #endif
     }
 
     static func app(_ message: String) {
-        appLogger.log("\(message, privacy: .public)")
+        appLogger.log("\(message, privacy: .private(mask: .hash))")
         #if DEBUG
         print("[app] \(message)")
         #endif
